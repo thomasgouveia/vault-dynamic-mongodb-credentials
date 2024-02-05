@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  labels:
+    app: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      name: demo-app
+      labels:
+        app: demo-app
+      annotations:
+        vault.hashicorp.com/role: 'demo-app'
+        vault.hashicorp.com/agent-inject: 'true'
+        vault.hashicorp.com/agent-cache-enable: "true"
+        vault.hashicorp.com/agent-revoke-on-shutdown: "true"
+        vault.hashicorp.com/agent-inject-template-mongodb: |
+          {{- with secret "mongodb/creds/demo-app" -}}
+            export MONGODB_URI="mongodb://{{ .Data.username }}:{{ .Data.password }}@mongodb-0.mongodb-svc:27017,mongodb-1.mongodb-svc:27017,mongodb-2.mongodb-svc:27017/?replicaSet=mongodb&authSource=${MONGODB_DATABASE}"
+          {{- end }}
+    spec:
+      serviceAccountName: demo-app
+      containers:
+        - name: demo-app
+          imagePullPolicy: Always
+          image: thomasgouveia/vault-dynamic-credentials:1.0.0
+          env:
+            - name: MONGODB_DATABASE
+              value: demo-app
+          command: ["sh", "-c"]
+          args: [". /vault/secrets/mongodb && /demo-app"]
+          ports:
+            - containerPort: 8080
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /_/health/liveness
+              port: 8080
+          readinessProbe:
+            httpGet:
+              path: /_/health/readiness
+              port: 8080
